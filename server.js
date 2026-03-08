@@ -10,6 +10,7 @@ import billRoute from "./routes/billRoute.js";
 import billsDataRoute from "./routes/billsDataRoute.js";
 import filterRoute from "./routes/filterRoute.js";
 import labelRoute from "./routes/labelRoute.js";
+import shipmentRoute from "./routes/shipmentRoute.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,6 +28,7 @@ app.use("/", billRoute);
 app.use("/", billsDataRoute);
 app.use("/", filterRoute);
 app.use("/", labelRoute);
+app.use("/", shipmentRoute);
 
 
 app.get("/testsubdomain", (req, res) => {

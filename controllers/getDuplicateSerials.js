@@ -1,58 +1,67 @@
-import db from "../config/db.js";
+// export const getDuplicateData = async (req, res) => {
+//   let connection;
 
-export const getDuplicateSerials = async (req, res) => {
-  try {
-    const [rows] = await db.query(`
-      SELECT
-        id,
-        serial_no,
-        send_id,
-        reference_no,
-        reason,
-        payload,
-        created_at
-      FROM duplicate_serials
-      ORDER BY created_at DESC
-    `);
+//   try {
+//     connection = await db.getConnection();
 
-    const data = rows.map((row) => {
-      let payload = {};
-      try {
-        payload = JSON.parse(row.payload);
-      } catch {}
+//     const [rows] = await connection.query(`
+//       SELECT
+//         id,
+//         NO_BILL,
+//         SERIAL_NO,
+//         REFERENCE,
+//         RECIPIENT_CODE,
+//         RECIPIENT_NAME,
+//         RECIPIENT_TEL,
+//         RECIPIENT_ADDRESS,
+//         RECIPIENT_SUBDISTRICT,
+//         RECIPIENT_DISTRICT,
+//         RECIPIENT_PROVINCE,
+//         RECIPIENT_ZIPCODE,
+//         dup_status,
+//         delivery_status,
+//         shipper_id,
+//         recipient_type,
+//         tel1_ext,
+//         tel2,
+//         tel2_ext,
+//         line_id,
+//         document_return_id,
+//         document_return_description,
+//         payment_id,
+//         qty_of_detail,
+//         is_pickup_customer,
+//         send_id,
+//         package_id,
+//         package_detail_id,
+//         qty_of_serial,
+//         height,
+//         width,
+//         length,
+//         weight,
+//         size_type,
+//         q,
+//         type_send,
+//         created_at
+//       FROM duplicate_data
+//       ORDER BY id DESC
+//     `);
 
-      return {
-        id: row.id,
-        created_at: row.created_at,
-        serial_no: row.serial_no,
-        reason: row.reason,
+//     return res.status(200).json({
+//       total: rows.length,
+//       data: rows,
+//     });
 
-        // 🔹 summary
-        send_id: payload.sendId,
-        reference_no: payload.head?.referenceNo,
-        recipient_name: payload.head?.recipientName,
-        address: payload.head?.address,
-        subdistrict: payload.head?.subdistrict,
-        district: payload.head?.district,
-        province: payload.head?.province,
-        zipCode: payload.head?.zipCode,
-        delivery_date: payload.head?.deliveryDate,
+//   } catch (err) {
 
-        // 🔹 head
-        head: payload.head || {},
+//     console.error(err);
 
-        // 🔹 detail
-        detail: payload.detail || [],
-      };
-    });
+//     return res.status(500).json({
+//       message: "ดึงข้อมูล duplicate ไม่สำเร็จ",
+//       error: err.message,
+//     });
 
-    res.json({
-      success: true,
-      count: data.length,
-      data,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
-  }
-};
+//   } finally {
+//     if (connection) connection.release();
+//   }
+// };

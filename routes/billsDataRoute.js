@@ -9,7 +9,6 @@ import {
   importBillsVGT,
   getBillsReport,
   getBillsDataBySerial,
-  createBillAdv,
 } from "../controllers/billsDataController.js";
 
 const router = express.Router();
@@ -23,6 +22,6 @@ router.get("/bills-warehouse", getBillsWarehouse);
 router.post("/bills-warehouse/accept", updateBillsWarehouseAccept);
 router.get("/bills-dc", getBillsDC);
 router.post("/bills-dc/accept", updateBillsDCAccept);
-router.post("/create-adv", createBillAdv);
+
 
 export default router;
