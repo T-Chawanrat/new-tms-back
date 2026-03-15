@@ -109,3 +109,76 @@ export const searchAddress = async (req, res) => {
     res.status(500).json({ message: "An error occurred" });
   }
 };
+
+export const getDrivers = async (req, res) => {
+  let connection;
+
+  try {
+    connection = await db.getConnection();
+
+    const [rows] = await connection.query(`
+      SELECT 
+        id,
+        CONCAT(first_name, ' ', last_name) AS name
+      FROM mm_drivers
+      ORDER BY first_name
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("GET DRIVERS ERROR:", err);
+    res.status(500).json({ message: "โหลด drivers ไม่สำเร็จ" });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+export const getVehicleTypes = async (req, res) => {
+  let connection;
+
+  try {
+    connection = await db.getConnection();
+
+    const [rows] = await connection.query(`
+      SELECT 
+        id,
+        type_name
+      FROM mm_vehicle_types
+      ORDER BY type_name
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("GET VEHICLE TYPES ERROR:", err);
+    res.status(500).json({ message: "โหลด vehicle types ไม่สำเร็จ" });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+export const getVehicles = async (req, res) => {
+  let connection;
+
+  try {
+    connection = await db.getConnection();
+
+    const [rows] = await connection.query(`
+      SELECT 
+        v.id,
+        v.brand,
+        v.license_plate,
+        vt.type_name
+      FROM mm_vehicles v
+      LEFT JOIN mm_vehicle_types vt 
+        ON v.vehicle_type_id = vt.id
+      ORDER BY v.license_plate
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("GET VEHICLES ERROR:", err);
+    res.status(500).json({ message: "โหลด vehicles ไม่สำเร็จ" });
+  } finally {
+    if (connection) connection.release();
+  }
+};

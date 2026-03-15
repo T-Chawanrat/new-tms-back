@@ -63,18 +63,18 @@ export const insertDuplicateFromBody = async (
     await connection.query(
       `
       INSERT INTO duplicate_data (
-        NO_BILL,
-        SERIAL_NO,
-        REFERENCE,
+        no_bill,
+        serial_no,
+        reference,
 
-        RECIPIENT_CODE,
-        RECIPIENT_NAME,
-        RECIPIENT_TEL,
-        RECIPIENT_ADDRESS,
-        RECIPIENT_SUBDISTRICT,
-        RECIPIENT_DISTRICT,
-        RECIPIENT_PROVINCE,
-        RECIPIENT_ZIPCODE,
+        recipient_code,
+        recipient_name,
+        tel,
+        address,
+        sub_district,
+        district,
+        province,
+        zipcode,
 
         dup_status,
 
@@ -109,6 +109,192 @@ export const insertDuplicateFromBody = async (
       [values],
     );
   }
+};
+
+export const createBillAdvInternal = async (
+  connection,
+  head,
+  detail,
+  sendId,
+) => {
+  const tel = String(head.tel1 ?? "").trim();
+  const telRegex = /^\d{1,10}$/;
+
+  if (!telRegex.test(tel)) {
+    throw new Error("เบอร์โทรไม่ถูกต้อง");
+  }
+
+  const packageIds = [
+    ...new Set(detail.map((d) => d.packageId).filter(Boolean)),
+  ];
+
+  if (packageIds.length === 0) {
+    throw new Error("ไม่พบ packageId");
+  }
+
+  const [packages] = await connection.query(
+    `
+    SELECT 
+      package_id,
+      package_name,
+      group_id,
+      group_bill AS group_name,
+      package_price
+    FROM quotation_adv
+    WHERE package_id IN (?)
+    `,
+    [packageIds],
+  );
+
+  if (packages.length !== packageIds.length) {
+    throw new Error("ไม่พบ packageId");
+  }
+
+  const packageMap = {};
+  for (const p of packages) {
+    packageMap[p.package_id] = p;
+  }
+
+  const [warehouses] = await connection.query(
+    `
+    SELECT tambon_id, warehouse_id, warehouse_name
+    FROM master_warehouses
+    WHERE tambon_name_th = ?
+    AND ampur_name_th = ?
+    AND province_name_th = ?
+    LIMIT 1
+    `,
+    [head.subdistrict ?? null, head.district ?? null, head.province ?? null],
+  );
+
+  if (warehouses.length === 0) {
+    throw new Error("ที่อยู่ผิด");
+  }
+
+  const warehouse = warehouses[0];
+
+  const now = new Date();
+  const year2 = now.getFullYear().toString().slice(-2);
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const datePart = `${year2}${month}${day}`;
+
+  const [countResult] = await connection.query(
+    `
+SELECT MAX(do) as lastDo
+FROM bills_data
+WHERE do LIKE ?
+`,
+    [`ADV0001-${datePart}-%`],
+  );
+
+  let running = 1;
+
+  if (countResult[0].lastDo) {
+    const lastRunning = countResult[0].lastDo.split("-")[2];
+    running = parseInt(lastRunning, 10) + 1;
+  }
+
+  running = String(running).padStart(6, "0");
+  const generatedDo = `ADV0001-${datePart}-${running}`;
+
+  const insertValues = [];
+
+  for (const d of detail) {
+    if (!Array.isArray(d.serialNo)) continue;
+
+    const pkg = packageMap[d.packageId] || {};
+
+    for (const serial of d.serialNo) {
+      insertValues.push([
+        head.referenceNo ?? null,
+        generatedDo,
+        serial ?? null,
+        head.reference ?? null,
+        null,
+        null,
+        null,
+        head.recipientCode ?? null,
+        head.recipientName ?? null,
+        head.tel1 ?? null,
+        head.address ?? null,
+        head.subdistrict ?? null,
+        head.district ?? null,
+        head.province ?? null,
+        head.zipCode ?? null,
+        warehouse.tambon_id ?? null,
+        pkg.package_price ?? null,
+        warehouse.warehouse_id ?? null,
+        warehouse.warehouse_name ?? null,
+        null,
+        "API",
+        1,
+        "รับเข้าระบบ",
+        pkg.group_id ?? null,
+        pkg.group_name ?? null,
+        head.deliveryStatus ?? null,
+        head.shipperId ?? null,
+        head.recipientType ?? null,
+        head.tel1Ext ?? null,
+        head.tel2 ?? null,
+        head.tel2Ext ?? null,
+        head.lineId ?? null,
+        head.cod ?? 0,
+        head.documentReturnId ?? null,
+        head.documentReturnDescription ?? null,
+        head.paymentId ?? null,
+        head.qtyOfDetail ?? null,
+        head.isPickupCustomer ?? null,
+        sendId ?? null,
+        d.packageId ?? null,
+        pkg.package_name ?? null,
+        d.packageDetailId ?? null,
+        d.qtyOfSerial ?? null,
+        d.costDifference ?? 0,
+        d.height ?? null,
+        d.width ?? null,
+        d.length ?? null,
+        d.weight ?? null,
+        d.size_type ?? null,
+        d.q ?? null,
+        d.type_send ?? null,
+      ]);
+    }
+  }
+
+  if (insertValues.length === 0) {
+    throw new Error("No serial to insert");
+  }
+
+  const serials = insertValues.map((v) => v[2]);
+
+  const [dup] = await connection.query(
+    "SELECT serial_no FROM bills_data WHERE serial_no IN (?)",
+    [serials],
+  );
+
+  if (dup.length > 0) {
+    throw new Error(`serial_no ซ้ำ: ${dup.map((r) => r.serial_no).join(", ")}`);
+  }
+
+  await connection.query(
+    `
+    INSERT INTO bills_data (
+    no_bill, do, serial_no, reference, send_date, customer_id, customer_name,
+    recipient_code, recipient_name, tel, address,
+    sub_district, district, province, zipcode,
+    sub_district_id, price, warehouse_id, warehouse_name,
+    user_id, type, status_id, status_name, group_id, group_name,
+    delivery_status, shipper_id, recipient_type, tel1_ext,
+    tel2, tel2_ext, line_id, cod, document_return_id,
+    document_return_description, payment_id, qty_of_detail,
+    is_pickup_customer, send_id,
+    package_id, package_name, package_detail_id, qty_of_serial,
+    cost_difference, height, width, length, weight, size_type, q, type_send
+)   VALUES ?
+    `,
+    [insertValues],
+  );
 };
 
 export const createBillAdv = async (req, res) => {
@@ -233,15 +419,22 @@ export const createBillAdv = async (req, res) => {
 
     const [countResult] = await connection.query(
       `
-      SELECT COUNT(*) as total
-      FROM bills_data
-      WHERE REFERENCE LIKE ?
-      `,
+SELECT MAX(do) as lastDo
+FROM bills_data
+WHERE do LIKE ?
+`,
       [`ADV0001-${datePart}-%`],
     );
 
-    const running = String((countResult[0].total || 0) + 1).padStart(6, "0");
-    const generatedReference = `ADV0001-${datePart}-${running}`;
+    let running = 1;
+
+    if (countResult[0].lastDo) {
+      const lastRunning = countResult[0].lastDo.split("-")[2];
+      running = parseInt(lastRunning, 10) + 1;
+    }
+
+    running = String(running).padStart(6, "0");
+    const generatedDo = `ADV0001-${datePart}-${running}`;
 
     const insertValues = [];
 
@@ -256,8 +449,9 @@ export const createBillAdv = async (req, res) => {
       for (const serial of d.serialNo) {
         insertValues.push([
           head.referenceNo ?? null,
+          generatedDo,
           serial ?? null,
-          generatedReference,
+          head.reference ?? null,
           null,
           null,
           null,
@@ -321,20 +515,20 @@ export const createBillAdv = async (req, res) => {
     // =========================
     // 6️⃣ ตรวจ SERIAL ซ้ำ
     // =========================
-    const allSerials = insertValues.map((v) => v[1]).filter(Boolean);
+    const allSerials = insertValues.map((v) => v[2]).filter(Boolean);
 
     if (allSerials.length > 0) {
       const [existingRows] = await connection.query(
         `
-        SELECT SERIAL_NO
+        SELECT serial_no
         FROM bills_data
-        WHERE SERIAL_NO IN (?)
+        WHERE serial_no IN (?)
         `,
         [allSerials],
       );
 
       if (existingRows.length > 0) {
-        const duplicateSerials = existingRows.map((r) => r.SERIAL_NO);
+        const duplicateSerials = existingRows.map((r) => r.serial_no);
 
         await insertDuplicateFromBody(
           connection,
@@ -358,19 +552,19 @@ export const createBillAdv = async (req, res) => {
     // =========================
     await connection.query(
       `
-      INSERT INTO bills_data (
-        NO_BILL, SERIAL_NO, REFERENCE, SEND_DATE, customer_id, CUSTOMER_NAME,
-        RECIPIENT_CODE, RECIPIENT_NAME, RECIPIENT_TEL, RECIPIENT_ADDRESS,
-        RECIPIENT_SUBDISTRICT, RECIPIENT_DISTRICT, RECIPIENT_PROVINCE,
-        RECIPIENT_ZIPCODE, sub_district_id, PRICE, warehouse_id, warehouse_name,
-        user_id, type, status_id, status_name, group_id, group_name,
-        delivery_status, shipper_id, recipient_type, tel1_ext,
-        tel2, tel2_ext, line_id, cod, document_return_id,
-        document_return_description, payment_id, qty_of_detail,
-        is_pickup_customer, send_id,
-        package_id, package_name, package_detail_id, qty_of_serial,
-        cost_difference, height, width, length, weight, size_type, q, type_send
-      ) VALUES ?
+    INSERT INTO bills_data (
+  no_bill, do, serial_no, reference, send_date, customer_id, customer_name,
+  recipient_code, recipient_name, tel, address,
+  sub_district, district, province, zipcode,
+  sub_district_id, price, warehouse_id, warehouse_name,
+  user_id, type, status_id, status_name, group_id, group_name,
+  delivery_status, shipper_id, recipient_type, tel1_ext,
+  tel2, tel2_ext, line_id, cod, document_return_id,
+  document_return_description, payment_id, qty_of_detail,
+  is_pickup_customer, send_id,
+  package_id, package_name, package_detail_id, qty_of_serial,
+  cost_difference, height, width, length, weight, size_type, q, type_send
+) VALUES ?
       `,
       [insertValues],
     );
@@ -406,20 +600,21 @@ export const getDuplicateData = async (req, res) => {
     const [rows] = await connection.query(
       `
       SELECT
-        NO_BILL,
-        SERIAL_NO,
-        REFERENCE,
-        SEND_DATE,
+        id,
+        no_bill,
+        serial_no,
+        reference,
+        send_date,
         customer_id,
-        CUSTOMER_NAME,
-        RECIPIENT_CODE,
-        RECIPIENT_NAME,
-        RECIPIENT_TEL,
-        RECIPIENT_ADDRESS,
-        RECIPIENT_SUBDISTRICT,
-        RECIPIENT_DISTRICT,
-        RECIPIENT_PROVINCE,
-        RECIPIENT_ZIPCODE,
+        customer_name,
+        recipient_code,
+        recipient_name,
+        tel,
+        address,
+        sub_district,
+        district,
+        province,
+        zipcode,
         user_id,
         created_at,
         updated_at,
@@ -492,22 +687,22 @@ export const getBillsAdv = async (req, res) => {
     const [rows] = await connection.query(
       `
       SELECT
-        NO_BILL,
-        SERIAL_NO,
-        REFERENCE,
-        SEND_DATE,
+        no_bill,
+        do,
+        serial_no,
+        send_date,
         customer_id,
-        CUSTOMER_NAME,
-        RECIPIENT_CODE,
-        RECIPIENT_NAME,
-        RECIPIENT_TEL,
-        RECIPIENT_ADDRESS,
-        RECIPIENT_SUBDISTRICT,
-        RECIPIENT_DISTRICT,
-        RECIPIENT_PROVINCE,
-        RECIPIENT_ZIPCODE,
+        customer_name,
+        recipient_code,
+        recipient_name,
+        tel,
+        address,
+        sub_district,
+        district,
+        province,
+        zipcode,
         sub_district_id,
-        PRICE,
+        price,
         warehouse_id,
         warehouse_name,
         user_id,
@@ -581,6 +776,12 @@ export const getBillsAdv = async (req, res) => {
   }
 };
 
+const throwError = (message, status = 400) => {
+  const err = new Error(message);
+  err.status = status;
+  throw err;
+};
+
 export const fixDuplicate = async (req, res) => {
   let connection;
 
@@ -588,15 +789,41 @@ export const fixDuplicate = async (req, res) => {
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    const { head, detail, sendId, originalRow } = req.body;
+    const { head, detail, sendId, originalRow, fixed_by } = req.body;
 
-    // 1 insert bill
+    if (!head || !detail || !sendId || !originalRow) {
+      throwError("Missing required data");
+    }
+
+    if (!originalRow.id) {
+      throwError("Duplicate row id is missing");
+    }
+
+    if (!Array.isArray(detail) || detail.length === 0) {
+      throwError("Detail data invalid");
+    }
+
+    if (!fixed_by) {
+      throwError("Missing user_id");
+    }
+
+    console.log("FixDuplicate HEAD:", head);
+    console.log("FixDuplicate DETAIL:", detail);
+    console.log("FixDuplicate SEND:", sendId);
+    console.log("FixDuplicate ROW:", originalRow);
+
+    // 1 create bill
     await createBillAdvInternal(connection, head, detail, sendId);
 
     // 2 delete duplicate
-    await connection.query(`DELETE FROM duplicate_data WHERE SERIAL_NO = ?`, [
-      originalRow.SERIAL_NO,
-    ]);
+    const [deleteResult] = await connection.query(
+      `DELETE FROM duplicate_data WHERE id = ?`,
+      [originalRow.id],
+    );
+
+    if (deleteResult.affectedRows === 0) {
+      throwError("Duplicate record not found or already fixed");
+    }
 
     // 3 insert log
     await connection.query(
@@ -606,26 +833,31 @@ export const fixDuplicate = async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?)
       `,
       [
-        originalRow.SERIAL_NO,
-        originalRow.REFERENCE,
+        originalRow.serial_no,
+        originalRow.reference,
         originalRow.dup_status,
         JSON.stringify(originalRow),
         JSON.stringify({ head, detail }),
-        req.user?.username ?? "system",
+        fixed_by,
       ],
     );
 
     await connection.commit();
 
     res.json({
+      success: true,
       message: "Fix duplicate success",
     });
   } catch (err) {
     if (connection) await connection.rollback();
 
-    res.status(500).json({
-      message: "Fix duplicate error",
-      error: err.message,
+    console.error("FixDuplicate ERROR:", err);
+
+    const status = err.status || 500;
+
+    res.status(status).json({
+      success: false,
+      message: err.message || "Fix duplicate error",
     });
   } finally {
     if (connection) connection.release();
