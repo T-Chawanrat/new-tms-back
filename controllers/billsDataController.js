@@ -774,7 +774,7 @@ export const updateBillsDCAccept = async (req, res) => {
 //     // =========================
 //     const [packages] = await connection.query(
 //       `
-//       SELECT 
+//       SELECT
 //         package_id,
 //         package_name,
 //         group_id,

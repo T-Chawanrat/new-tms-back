@@ -1,8 +1,10 @@
 import express from "express";
-import { assignVehicle } from "../controllers/assignVehicleController.js";
+import { getAdvScan6w, update6wAccept } from "../controllers/assignVehicleController.js";
+
 
 
 const router = express.Router();
-router.post("/assign-vehicle", assignVehicle);
+router.get("/get-adv6w", getAdvScan6w);
+router.post("/adv6w/accept", update6wAccept);
 
 export default router;
