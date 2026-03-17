@@ -13,6 +13,7 @@ const db = mysql.createPool({
 
   connectTimeout: 60000,
   acquireTimeout: 60000,
+  timezone: "+07:00",
 });
 
 export default db;
