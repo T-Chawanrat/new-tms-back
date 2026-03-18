@@ -87,7 +87,7 @@ export const searchAddress = async (req, res) => {
         warehouse_id,
         warehouse_code,
         warehouse_name
-      FROM xsendwork_tmg.master_warehouses
+      FROM docker_tms_db.master_warehouses
       WHERE
         tambon_name_th LIKE ?
         OR ampur_name_th LIKE ?
