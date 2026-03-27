@@ -389,22 +389,91 @@ export const createBillAdv = async (req, res) => {
       `,
       [head.subdistrict ?? null, head.district ?? null, head.province ?? null],
     );
+if (warehouses.length === 0) {
+  const checkValues = [];
 
-    if (warehouses.length === 0) {
-      await insertDuplicateFromBody(
-        connection,
-        head,
-        detail,
-        sendId,
-        "INVALID_ADDRESS",
-      );
+  for (const d of detail) {
+    if (!Array.isArray(d.serialNo)) continue;
 
-      await connection.commit();
+    for (const sn of d.serialNo) {
+      if (!sn) continue;
 
-      return res.status(400).json({
-        message: "ที่อยู่ผิด",
+      checkValues.push({
+        sn,
+        address: head.address ?? null,
+        subdistrict: head.subdistrict ?? null,
+        district: head.district ?? null,
+        province: head.province ?? null,
+        zipcode: head.zipCode ?? null,
       });
     }
+  }
+
+  // 🔍 เช็คว่าเคย INVALID_ADDRESS ซ้ำไหม (SN + address เดิม)
+  for (const item of checkValues) {
+    const [exist] = await connection.query(
+      `
+      SELECT id
+      FROM duplicate_data
+      WHERE serial_no = ?
+      AND address = ?
+      AND sub_district = ?
+      AND district = ?
+      AND province = ?
+      AND zipcode = ?
+      AND dup_status = 'INVALID_ADDRESS'
+      LIMIT 1
+      `,
+      [
+        item.sn,
+        item.address,
+        item.subdistrict,
+        item.district,
+        item.province,
+        item.zipcode,
+      ],
+    );
+
+    // 🚫 ถ้าเคย insert แล้ว → ข้าม (ไม่ต้อง insert ซ้ำ)
+    if (exist.length > 0) {
+      continue;
+    }
+
+    // ✅ ยังไม่เคย → insert ทีละตัว
+    await connection.query(
+      `
+      INSERT INTO duplicate_data (
+        no_bill, serial_no, reference,
+        recipient_code, recipient_name, tel,
+        address, sub_district, district, province, zipcode,
+        dup_status,
+        send_id
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INVALID_ADDRESS', ?)
+      `,
+      [
+        head.referenceNo ?? null,
+        item.sn,
+        head.reference ?? null,
+        head.recipientCode ?? null,
+        head.recipientName ?? null,
+        head.tel1 ?? null,
+        item.address,
+        item.subdistrict,
+        item.district,
+        item.province,
+        item.zipcode,
+        sendId ?? null,
+      ],
+    );
+  }
+
+  await connection.commit();
+
+  return res.status(400).json({
+    message: "ที่อยู่ผิด",
+  });
+}
 
     const warehouse = warehouses[0];
 
@@ -512,21 +581,43 @@ WHERE do LIKE ?
       });
     }
 
-    // =========================
-    // 6️⃣ ตรวจ SERIAL ซ้ำ
-    // =========================
     const allSerials = insertValues.map((v) => v[2]).filter(Boolean);
 
     if (allSerials.length > 0) {
+      // 🔴 เช็คใน bills_data (ของเดิม)
       const [existingRows] = await connection.query(
         `
-        SELECT serial_no
-        FROM bills_data
-        WHERE serial_no IN (?)
-        `,
+    SELECT serial_no
+    FROM bills_data
+    WHERE serial_no IN (?)
+    `,
         [allSerials],
       );
 
+      // 🟠 เช็คใน duplicate_data (ของใหม่)
+      const [duplicateRows] = await connection.query(
+        `
+  SELECT serial_no
+  FROM duplicate_data
+  WHERE serial_no IN (?)
+  AND dup_status = 'DUP_SN'
+  `,
+        [allSerials],
+      );
+
+      // ❌ ถ้าเคยซ้ำมาแล้ว (อยู่ใน duplicate_data)
+      if (duplicateRows.length > 0) {
+        const dupSn = duplicateRows.map((r) => r.serial_no);
+
+        await connection.rollback();
+
+        return res.status(400).json({
+          message: "SERIAL นี้เคยเป็นข้อมูลซ้ำแล้ว ห้ามส่งซ้ำ",
+          duplicates: dupSn,
+        });
+      }
+
+      // ❌ ถ้าซ้ำครั้งแรก (อยู่ใน bills_data)
       if (existingRows.length > 0) {
         const duplicateSerials = existingRows.map((r) => r.serial_no);
 
@@ -541,7 +632,7 @@ WHERE do LIKE ?
         await connection.commit();
 
         return res.status(400).json({
-          message: "พบ SERIAL ซ้ำ",
+          message: "พบ SERIAL ซ้ำ (บันทึกลง duplicate_data แล้ว)",
           duplicates: duplicateSerials,
         });
       }
@@ -858,6 +949,150 @@ export const fixDuplicate = async (req, res) => {
     res.status(status).json({
       success: false,
       message: err.message || "Fix duplicate error",
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+export const createDataAdv = async (req, res) => {
+  let connection;
+
+  try {
+    const { head, detail, sendId } = req.body;
+
+    if (!head || !Array.isArray(detail)) {
+      return res.status(400).json({ message: "Invalid payload" });
+    }
+
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    // -------------------------------
+    // 1. INSERT HEAD
+    // -------------------------------
+    const [headResult] = await connection.query(
+      `
+      INSERT INTO data_adv (
+        reference_no, delivery_status, reference,
+        shipper_id, recipient_code, recipient_name, recipient_type,
+        address, sub_district, district, province, zipcode,
+        tel1, tel1_ext, tel2, tel2_ext,
+        line_id, cod, document_return_id, document_return_description,
+        payment_id, qty_of_detail, is_pickup_customer, send_id
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        head.referenceNo,
+        head.deliveryStatus,
+        head.reference,
+        head.shipperId,
+        head.recipientCode,
+        head.recipientName,
+        head.recipientType,
+        head.address,
+        head.subdistrict,
+        head.district,
+        head.province,
+        head.zipCode,
+        head.tel1,
+        head.tel1Ext,
+        head.tel2,
+        head.tel2Ext,
+        head.lineId,
+        head.cod,
+        head.documentReturnId,
+        head.documentReturnDescription,
+        head.paymentId,
+        head.qtyOfDetail,
+        head.isPickupCustomer,
+        sendId,
+      ],
+    );
+
+    const dataAdvId = headResult.insertId;
+
+    // -------------------------------
+    // 2. LOOP DETAIL
+    // -------------------------------
+    for (const pkg of detail) {
+      const [pkgResult] = await connection.query(
+        `
+        INSERT INTO data_adv_packages (
+          data_adv_id,
+          package_id,
+          package_detail_id,
+          qty_of_serial,
+          cost_difference,
+          height, width, length, weight,
+          size_type, q, type_send
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          dataAdvId,
+          pkg.packageId,
+          pkg.packageDetailId,
+          pkg.qtyOfSerial,
+          pkg.costDifference,
+          pkg.height,
+          pkg.width,
+          pkg.length,
+          pkg.weight,
+          pkg.size_type,
+          pkg.q,
+          pkg.type_send,
+        ],
+      );
+
+      // -------------------------------
+      // 3. LOOP SERIAL
+      // -------------------------------
+      if (Array.isArray(pkg.serialNo)) {
+        for (const sn of pkg.serialNo) {
+          try {
+            await connection.query(
+              `
+              INSERT INTO data_adv_sn (
+                data_adv_id,
+                package_id,
+                package_detail_id,
+                serial_no
+              )
+              VALUES (?, ?, ?, ?)
+              `,
+              [dataAdvId, pkg.packageId, pkg.packageDetailId, sn],
+            );
+          } catch (err) {
+            // ❗ กัน crash ถ้า SN ซ้ำ (unique)
+            if (err.code === "ER_DUP_ENTRY") {
+              console.log("Duplicate SN:", sn);
+              // TODO: ไป insert duplicate_data ตรงนี้ได้
+            } else {
+              throw err;
+            }
+          }
+        }
+      }
+    }
+
+    // -------------------------------
+    // COMMIT
+    // -------------------------------
+    await connection.commit();
+
+    return res.status(201).json({
+      message: "Created successfully",
+      data_adv_id: dataAdvId,
+    });
+  } catch (error) {
+    if (connection) await connection.rollback();
+
+    console.error(error);
+    return res.status(500).json({
+      message: "Internal Server Error",
+      error: error.message,
     });
   } finally {
     if (connection) connection.release();

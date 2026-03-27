@@ -13,7 +13,6 @@ import labelRoute from "./routes/labelRoute.js";
 import shipmentRoute from "./routes/shipmentRoute.js";
 import assignVehicleRoute from "./routes/assignVehicleRoute.js";
 
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -32,8 +31,6 @@ app.use("/", labelRoute);
 app.use("/", shipmentRoute);
 app.use("/", assignVehicleRoute);
 
-
-
 app.get("/testsubdomain", (req, res) => {
   res.send("Backend is working!");
 });
@@ -41,7 +38,6 @@ app.get("/testsubdomain", (req, res) => {
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", service: "tmg-backend" });
 });
-
 
 // const sslOptions = {
 //   key: fs.readFileSync(
