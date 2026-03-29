@@ -10,8 +10,9 @@ import billRoute from "./routes/billRoute.js";
 import billsDataRoute from "./routes/billsDataRoute.js";
 import filterRoute from "./routes/filterRoute.js";
 import labelRoute from "./routes/labelRoute.js";
-import shipmentRoute from "./routes/shipmentRoute.js";
-import assignVehicleRoute from "./routes/assignVehicleRoute.js";
+import dataAdvRoutes from "./routes/data-adv.routes.js";
+import pendingRoutes from "./routes/pending.routes.js";
+import logsRoutes from "./routes/logs.routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,8 +29,9 @@ app.use("/", billRoute);
 app.use("/", billsDataRoute);
 app.use("/", filterRoute);
 app.use("/", labelRoute);
-app.use("/", shipmentRoute);
-app.use("/", assignVehicleRoute);
+app.use("/data-adv", dataAdvRoutes);
+app.use("/pending", pendingRoutes);
+app.use("/logs", logsRoutes);
 
 app.get("/testsubdomain", (req, res) => {
   res.send("Backend is working!");
