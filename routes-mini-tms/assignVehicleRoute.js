@@ -1,5 +1,5 @@
 import express from "express";
-import { getAdvScan6w, update6wAccept , getDcScan, updateDcAccept } from "../controllers/assignVehicleController.js";
+import { getAdvScan6w, update6wAccept , getDcScan, updateDcAccept } from "../controller-mini-tms/assignVehicleController.js";
 
 
 

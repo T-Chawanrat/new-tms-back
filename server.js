@@ -6,10 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import authRoute from "./routes/authRoute.js";
-import billRoute from "./routes/billRoute.js";
-import billsDataRoute from "./routes/billsDataRoute.js";
 import filterRoute from "./routes/filterRoute.js";
-import labelRoute from "./routes/labelRoute.js";
 import dataAdvRoutes from "./routes/data-adv.routes.js";
 import pendingRoutes from "./routes/pending.routes.js";
 import logsRoutes from "./routes/logs.routes.js";
@@ -25,21 +22,10 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/labels", express.static(path.join(__dirname, "labels")));
 
 app.use("/", authRoute);
-app.use("/", billRoute);
-app.use("/", billsDataRoute);
 app.use("/", filterRoute);
-app.use("/", labelRoute);
 app.use("/data-adv", dataAdvRoutes);
 app.use("/pending", pendingRoutes);
 app.use("/logs", logsRoutes);
-
-app.get("/testsubdomain", (req, res) => {
-  res.send("Backend is working!");
-});
-
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", service: "tmg-backend" });
-});
 
 // const sslOptions = {
 //   key: fs.readFileSync(
