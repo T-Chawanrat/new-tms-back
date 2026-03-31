@@ -10,6 +10,7 @@ import filterRoute from "./routes/filterRoute.js";
 import dataAdvRoutes from "./routes/data-adv.routes.js";
 import pendingRoutes from "./routes/pending.routes.js";
 import logsRoutes from "./routes/logs.routes.js";
+import loadingRoutes from "./routes/loading.routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,6 +27,7 @@ app.use("/", filterRoute);
 app.use("/data-adv", dataAdvRoutes);
 app.use("/pending", pendingRoutes);
 app.use("/logs", logsRoutes);
+app.use("/", loadingRoutes);
 
 // const sslOptions = {
 //   key: fs.readFileSync(
